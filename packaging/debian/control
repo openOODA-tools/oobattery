@@ -1,0 +1,14 @@
+Source: oobattery
+Section: utils
+Priority: optional
+Maintainer: openOODA-tools <ops@openooda.org>
+Standards-Version: 4.6.2
+Build-Depends: debhelper-compat (= 13)
+
+Package: oobattery
+Architecture: amd64
+Depends: libc6
+Description: POWER METER
+ Reads ACPI battery charge level, energy consumption rate, and health condition.
+ Capability-bounded openOODA utility with zero ambient authority,
+ oote theme palettes, and native Model Context Protocol (MCP) surface.
