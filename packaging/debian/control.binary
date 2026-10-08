@@ -1,0 +1,10 @@
+Package: oobattery
+Version: 0.2.0-1
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: openOODA-tools <ops@openooda.org>
+Description: Reads ACPI battery charge level, energy consumption rate, and health condition.
+ oobattery is a sovereign, capability-bounded BATTERY MONITOR written in pure
+ openOODA, featuring zero ambient authority, oote color themes, and an
+ MCP stdio server.

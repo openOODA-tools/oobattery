@@ -1,0 +1,70 @@
+// # oobattery Battery Health & Consumption Calculator
+//
+// Logline: Evaluates battery wear, power draw in Watts, and operational discharge runtimes.
+//
+// Setup: Pure math transformers converting micro-units into human-readable electrical metrics.
+//
+// Beats:
+//   1. Convert microwatt consumption into decimal Watt ratings.
+//   2. Compute battery wear percentage relative to factory design capacity.
+//   3. Format operational runtime estimates into hours and minutes.
+
+import "core/battery_model.oo";
+
+pub type BatteryHealthReport = struct {
+    status: String,
+    capacity_pct: Int,
+    health_pct: Int,
+    wear_pct: Int,
+    power_watts: String,
+    voltage_volts: String,
+    remaining_estimate: String
+};
+
+fn format_decimal_val(micro_val: Int) -> String {
+    if micro_val <= 0 {
+        return "0.00";
+    }
+    let whole: Int = micro_val / 1000000;
+    let frac: Int = (micro_val % 1000000) / 10000;
+    let frac_str: String = if frac < 10 { "0" + to_string(frac) } else { to_string(frac) };
+    return to_string(whole) + "." + frac_str;
+}
+
+fn format_runtime_estimate(info: BatteryInfo) -> String {
+    if !info.is_present {
+        return "N/A (AC Connected)";
+    }
+    if info.status == "Full" {
+        return "Full (AC Connected)";
+    }
+    let mins: Int = calculate_remaining_minutes(info);
+    if mins <= 0 {
+        return "Calculating";
+    }
+    let hours: Int = mins / 60;
+    let m: Int = mins % 60;
+    let m_str: String = if m < 10 { "0" + to_string(m) } else { to_string(m) };
+    return to_string(hours) + "h " + m_str + "m";
+}
+
+pub fn evaluate_battery_health(info: BatteryInfo) -> BatteryHealthReport {
+    let mut wear: Int = 0;
+    if info.health_pct < 100 {
+        wear = 100 - info.health_pct;
+    }
+
+    let p_watts: String = format_decimal_val(info.power_now_uw) + " W";
+    let v_volts: String = format_decimal_val(info.voltage_now_uv) + " V";
+    let est: String = format_runtime_estimate(info);
+
+    return BatteryHealthReport {
+        status: info.status,
+        capacity_pct: info.capacity_pct,
+        health_pct: info.health_pct,
+        wear_pct: wear,
+        power_watts: p_watts,
+        voltage_volts: v_volts,
+        remaining_estimate: est
+    };
+}

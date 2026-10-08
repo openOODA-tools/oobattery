@@ -1,0 +1,102 @@
+// # oobattery Rendering and Diagnostics Theme
+//
+// Logline: Formats battery status, energy gauges, and health diagnostics for terminal and JSON envelopes.
+//
+// Setup: Pure string formatter supporting oote styling and JSON envelope serialization.
+//
+// Beats:
+//   1. Provide ANSI styling helpers and visual percentage gauge bars.
+//   2. Format real-time charge state, power consumption, and runtime metrics.
+//   3. Serialize battery records into structured JSON envelopes.
+
+import "core/battery_model.oo";
+import "core/battery_health.oo";
+
+pub fn ansi_reset() -> String { return "\x1b[0m"; }
+pub fn ansi_bold() -> String { return "\x1b[1m"; }
+pub fn ansi_dim() -> String { return "\x1b[2m"; }
+pub fn ansi_cyan() -> String { return "\x1b[36m"; }
+pub fn ansi_green() -> String { return "\x1b[32m"; }
+pub fn ansi_yellow() -> String { return "\x1b[33m"; }
+pub fn ansi_red() -> String { return "\x1b[31m"; }
+
+fn json_escape(s: String) -> String {
+    let mut out: String = "";
+    let n: Int = chars_len(s);
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(s, i);
+        if c == "\\" {
+            out = out + "\\\\";
+        } else if c == "\"" {
+            out = out + "\\\"";
+        } else if c == "\n" {
+            out = out + "\\n";
+        } else if c == "\r" {
+            out = out + "\\r";
+        } else if c == "\t" {
+            out = out + "\\t";
+        } else {
+            out = out + c;
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn render_gauge(pct: Int) -> String {
+    let clamped: Int = if pct < 0 { 0 } else if pct > 100 { 100 } else { pct };
+    let filled: Int = clamped / 10;
+    let mut bar: String = "[";
+    let mut i: Int = 0;
+    while i < 10 {
+        if i < filled {
+            bar = bar + "=";
+        } else {
+            bar = bar + "-";
+        }
+        i = i + 1;
+    }
+    bar = bar + "]";
+    return bar;
+}
+
+pub fn render_capacity_only(info: BatteryInfo) -> String {
+    return to_string(info.capacity_pct) + "%";
+}
+
+pub fn render_battery_text(info: BatteryInfo, health: BatteryHealthReport) -> String {
+    let mut out: String = ansi_bold() + "oobattery Power Meter: " + ansi_cyan() + info.name + ansi_reset() + "\n";
+    out = out + "  Status     : ";
+    if info.status == "Charging" {
+        out = out + ansi_green() + info.status + ansi_reset() + "\n";
+    } else if info.status == "Discharging" {
+        out = out + ansi_yellow() + info.status + ansi_reset() + "\n";
+    } else {
+        out = out + ansi_cyan() + info.status + ansi_reset() + "\n";
+    }
+    out = out + "  Charge     : " + render_gauge(info.capacity_pct) + " " + to_string(info.capacity_pct) + "%\n";
+    out = out + "  Power Draw : " + health.power_watts + "\n";
+    out = out + "  Voltage    : " + health.voltage_volts + "\n";
+    out = out + "  Health     : " + to_string(health.health_pct) + "% (Wear: " + to_string(health.wear_pct) + "%)\n";
+    out = out + "  Remaining  : " + health.remaining_estimate + "\n";
+    if chars_len(info.technology) > 0 {
+        out = out + "  Technology : " + info.technology + "\n";
+    }
+    return out;
+}
+
+pub fn render_battery_json(info: BatteryInfo, health: BatteryHealthReport) -> String {
+    let mut out: String = "{\"operation\":\"battery_status\"";
+    out = out + ",\"device\":\"" + json_escape(info.name) + "\"";
+    out = out + ",\"present\":" + (if info.is_present { "true" } else { "false" });
+    out = out + ",\"status\":\"" + json_escape(info.status) + "\"";
+    out = out + ",\"capacity_pct\":" + to_string(info.capacity_pct);
+    out = out + ",\"power_watts\":\"" + json_escape(health.power_watts) + "\"";
+    out = out + ",\"voltage_volts\":\"" + json_escape(health.voltage_volts) + "\"";
+    out = out + ",\"health_pct\":" + to_string(health.health_pct);
+    out = out + ",\"wear_pct\":" + to_string(health.wear_pct);
+    out = out + ",\"remaining_estimate\":\"" + json_escape(health.remaining_estimate) + "\"";
+    out = out + ",\"technology\":\"" + json_escape(info.technology) + "\"}";
+    return out;
+}

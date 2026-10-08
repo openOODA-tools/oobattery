@@ -1,52 +1,82 @@
-// # oobattery Main Entry Point
+// # oobattery Main Entry Point - Sovereign Power Meter
 //
-// Logline: Reads ACPI battery charge level, energy consumption rate, and health condition.
+// Logline: Inspects ACPI battery charge level, energy consumption rate, and health condition.
 //
 // Setup: Demands explicit capability tokens and standard argument list.
 //
 // Beats:
 //   1. Parse command-line options and dispatch --help, --version, or --mcp.
-//   2. Execute capability-bounded oobattery operations.
-//   3. Format and output structured results to standard output.
+//   2. Read battery sysfs attributes under capability-bounded filesystem authority.
+//   3. Render visual charge gauge, electrical power ratings, or JSON envelopes.
+
+import "core/battery_model.oo";
+import "core/battery_sysfs.oo";
+import "core/battery_health.oo";
+import "render/battery_theme.oo";
+import "ipc/battery_opts.oo";
+import "ipc/mcp_serve.oo";
 
 fn render_help() -> String {
-    return "oobattery 0.1.0 (openOODA sovereign system & monitor)\n"
-        + "usage: oobattery [options] [ARGUMENTS]...\n\n"
+    return "oobattery 0.2.0 (openOODA sovereign power meter)\n"
+        + "usage: oobattery [options] [device]\n\n"
         + "Reads ACPI battery charge level, energy consumption rate, and health condition.\n\n"
         + "Options:\n"
         + "  -h, --help           display this help and exit\n"
         + "  -v, --version        output version information and exit\n"
-        + "      --json           output formatted as JSON Lines\n"
-        + "      --color <WHEN>   colorize output: auto, always, never [default: auto]\n"
-        + "      --theme <NAME>   override active oote palette\n"
+        + "  -c, --capacity       display only battery percentage\n"
+        + "  -H, --health         display battery health and wear metrics\n"
+        + "  -b, --battery DEV    specify battery device node (e.g. BAT0)\n"
+        + "  -s, --sysfs PATH     specify custom sysfs root directory\n"
+        + "      --json           format output as JSON envelope\n"
         + "      --mcp            run as Model Context Protocol stdio server\n";
 }
 
-fn render_version() -> String {
-    return "oobattery 0.1.0 (openOODA sovereign system & monitor)\n";
-}
+pub fn main(
+    fs: &FsReadCap,
+    proc_cap: &ProcessCap,
+    env: &EnvCap,
+    args: List[String]
+) -> Result[Int, String] {
+    let opts: BatteryOpts = parse_battery_args(args);
 
-fn main(args: List[String]) -> Int {
-    let num_args: Int = list_len(args);
-    let mut i: Int = 0;
-
-    while i < num_args {
-        let arg: String = list_get(args, i);
-        if arg == "-h" || arg == "--help" {
-            print(render_help());
-            return 0;
-        }
-        if arg == "-v" || arg == "--version" {
-            print(render_version());
-            return 0;
-        }
-        if arg == "--mcp" {
-            print("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"ready\",\"tool\":\"oobattery\"}}\n");
-            return 0;
-        }
-        i = i + 1;
+    if opts.action == "help" {
+        print(render_help());
+        return Ok(0);
+    }
+    if opts.action == "version" {
+        println("oobattery 0.2.0 (openOODA sovereign power meter)");
+        return Ok(0);
+    }
+    if opts.action == "mcp" {
+        run_mcp_server(fs);
+        return Ok(0);
     }
 
-    print("oobattery: sovereign capability-bounded utility ready\n");
-    return 0;
+    let info: BatteryInfo = read_battery_from_sysfs(fs, opts.sysfs_base, opts.device_name);
+    let health: BatteryHealthReport = evaluate_battery_health(info);
+
+    if opts.capacity_only {
+        println(render_capacity_only(info));
+        return Ok(0);
+    }
+
+    if opts.health_only {
+        if opts.json_mode {
+            let h_json: String = "{\"device\":\"" + info.name
+                + "\",\"health_pct\":" + to_string(health.health_pct)
+                + ",\"wear_pct\":" + to_string(health.wear_pct) + "}";
+            println(h_json);
+        } else {
+            println("Health: " + to_string(health.health_pct) + "% (Wear: " + to_string(health.wear_pct) + "%)");
+        }
+        return Ok(0);
+    }
+
+    if opts.json_mode {
+        println(render_battery_json(info, health));
+    } else {
+        print(render_battery_text(info, health));
+    }
+
+    return Ok(0);
 }

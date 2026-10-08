@@ -1,7 +1,7 @@
 # Maintainer: openOODA-tools <ops@openooda.org>
 pkgname=oobattery-bin
 _pkgname=oobattery
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Reads ACPI battery charge level, energy consumption rate, and health condition."
 arch=('x86_64')

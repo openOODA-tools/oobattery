@@ -4,7 +4,7 @@
 # "Removes oobattery binary, package installations, and cache."
 #
 # Usage:
-#   curl -fsSL https://openooda-toobattery.github.io/oobattery/uninstall.sh | bash
+#   curl -fsSL https://openooda-tools.github.io/oobattery/uninstall.sh | bash
 #   or: ./uninstall.sh [options]
 #
 # Options:

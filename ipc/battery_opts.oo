@@ -1,0 +1,71 @@
+// # oobattery CLI Options Parser
+//
+// Logline: Ingests command line arguments into typed battery monitor execution options.
+//
+// Setup: Pure argument decoding supporting POSIX flags and sysfs configuration.
+//
+// Beats:
+//   1. Define BatteryOpts data structure covering device selector, flags, and outputs.
+//   2. Extract flags for capacity-only, health summaries, and custom sysfs paths.
+//   3. Separate flags from positional device identifiers.
+
+pub type BatteryOpts = struct {
+    action: String,
+    device_name: String,
+    sysfs_base: String,
+    capacity_only: Bool,
+    health_only: Bool,
+    json_mode: Bool
+};
+
+pub fn default_battery_opts() -> BatteryOpts {
+    return BatteryOpts {
+        action: "status",
+        device_name: "auto",
+        sysfs_base: "/sys/class/power_supply",
+        capacity_only: false,
+        health_only: false,
+        json_mode: false
+    };
+}
+
+pub fn parse_battery_args(args: List[String]) -> BatteryOpts {
+    let mut opts: BatteryOpts = default_battery_opts();
+    let n: Int = list_len(args);
+    let mut i: Int = 0;
+
+    while i < n {
+        let arg: String = list_get(args, i);
+        if arg == "-h" || arg == "--help" {
+            opts.action = "help";
+            return opts;
+        } else if arg == "-v" || arg == "--version" {
+            opts.action = "version";
+            return opts;
+        } else if arg == "--mcp" {
+            opts.action = "mcp";
+            return opts;
+        } else if arg == "--json" {
+            opts.json_mode = true;
+        } else if arg == "-c" || arg == "--capacity" {
+            opts.capacity_only = true;
+        } else if arg == "-H" || arg == "--health" {
+            opts.health_only = true;
+        } else if arg == "-b" || arg == "--battery" || arg == "--device" {
+            if i + 1 < n {
+                i = i + 1;
+                opts.device_name = list_get(args, i);
+            }
+        } else if arg == "-s" || arg == "--sysfs" {
+            if i + 1 < n {
+                i = i + 1;
+                opts.sysfs_base = list_get(args, i);
+            }
+        } else if !str_starts_with(arg, "-") {
+            opts.device_name = arg;
+        }
+        i = i + 1;
+    }
+
+    return opts;
+}

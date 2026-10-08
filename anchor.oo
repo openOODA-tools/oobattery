@@ -1,13 +1,22 @@
-// # oobattery Root Anchor
+// # oobattery Root Subsystem Anchor
 //
-// Logline: Top-level anchor re-exporting options, core logic, render, and ipc subsystems.
+// Logline: Sovereign power meter and battery health monitor reading ACPI and sysfs attributes.
 //
-// Setup: Pure shim re-exporting all oobattery subsystem anchors.
+// Setup: Root barrel shim re-exporting options, core logic, render, and ipc subsystems.
 //
 // Beats:
-//   1. Re-export options parsing subsystem.
-//   2. Re-export core oobattery execution engine.
-//   3. Re-export render formatting subsystem.
-//   4. Re-export Model Context Protocol (MCP) IPC subsystem.
+//   1. Re-export core power models, sysfs readers, and health metrics.
+//   2. Re-export render formatting subsystem.
+//   3. Re-export Model Context Protocol (MCP) IPC subsystem.
 
-import "main.oo";
+import "core/anchor.oo";
+import "render/anchor.oo";
+import "ipc/anchor.oo";
+
+pub fn oobattery_version() -> String {
+    return "0.2.0";
+}
+
+pub fn oobattery_banner() -> String {
+    return "oobattery v0.2.0 (openOODA sovereign power meter)";
+}

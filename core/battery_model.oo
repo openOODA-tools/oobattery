@@ -1,0 +1,83 @@
+// # oobattery Battery Model and State Types
+//
+// Logline: Data structures representing ACPI power supply and battery charge metrics.
+//
+// Setup: Pure record definitions with status classification and time estimation helpers.
+//
+// Beats:
+//   1. Define BatteryInfo record capturing capacity, status, power, and voltage metrics.
+//   2. Classify charging and discharging operational states.
+//   3. Compute remaining operational time estimates from current energy and power rate.
+
+pub type BatteryInfo = struct {
+    name: String,
+    is_present: Bool,
+    status: String,
+    capacity_pct: Int,
+    energy_now_uwh: Int,
+    energy_full_uwh: Int,
+    power_now_uw: Int,
+    voltage_now_uv: Int,
+    health_pct: Int,
+    technology: String,
+    model_name: String,
+    manufacturer: String
+};
+
+pub fn default_battery_info() -> BatteryInfo {
+    return BatteryInfo {
+        name: "BAT0",
+        is_present: true,
+        status: "Discharging",
+        capacity_pct: 85,
+        energy_now_uwh: 42500000,
+        energy_full_uwh: 50000000,
+        power_now_uw: 12500000,
+        voltage_now_uv: 11400000,
+        health_pct: 95,
+        technology: "Li-ion",
+        model_name: "Primary",
+        manufacturer: "openOODA"
+    };
+}
+
+pub fn make_ac_power_info() -> BatteryInfo {
+    return BatteryInfo {
+        name: "AC",
+        is_present: false,
+        status: "AC Online",
+        capacity_pct: 100,
+        energy_now_uwh: 0,
+        energy_full_uwh: 0,
+        power_now_uw: 0,
+        voltage_now_uv: 0,
+        health_pct: 100,
+        technology: "Wall Power",
+        model_name: "AC Adapter",
+        manufacturer: "System"
+    };
+}
+
+pub fn is_charging(info: BatteryInfo) -> Bool {
+    return info.status == "Charging";
+}
+
+pub fn is_discharging(info: BatteryInfo) -> Bool {
+    return info.status == "Discharging";
+}
+
+pub fn calculate_remaining_minutes(info: BatteryInfo) -> Int {
+    if info.power_now_uw <= 0 {
+        return 0;
+    }
+    if is_discharging(info) {
+        let mins: Int = (info.energy_now_uwh * 60) / info.power_now_uw;
+        return mins;
+    }
+    if is_charging(info) && info.energy_full_uwh > info.energy_now_uwh {
+        let remaining_energy: Int = info.energy_full_uwh - info.energy_now_uwh;
+        let mins: Int = (remaining_energy * 60) / info.power_now_uw;
+        return mins;
+    }
+    return 0;
+}

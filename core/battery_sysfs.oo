@@ -1,0 +1,135 @@
+// # oobattery Linux Sysfs Ingestion Engine
+//
+// Logline: Ingests ACPI power supply metrics from Linux sysfs kernel device attributes.
+//
+// Setup: Bound to FsReadCap for reading /sys/class/power_supply device nodes.
+//
+// Beats:
+//   1. Read capacity, status, energy, and power metrics from kernel sysfs nodes.
+//   2. Parse integer micro-units (uWh, uW, uV) safely with fallbacks.
+//   3. Gracefully detect AC line-power states when running on battery-less hardware.
+
+import "core/battery_model.oo";
+
+fn is_ascii_digit(b: Int) -> Bool {
+    return b >= 48 && b <= 57;
+}
+
+pub fn parse_int_from_str(s: String, default_val: Int) -> Int {
+    let trimmed: String = str_trim(s);
+    let n: Int = chars_len(trimmed);
+    if n == 0 { return default_val; }
+
+    let mut acc: Int = 0;
+    let mut i: Int = 0;
+    let mut negative: Bool = false;
+    if char_at(trimmed, 0) == "-" {
+        negative = true;
+        i = 1;
+    }
+
+    while i < n {
+        let b: Int = byte_at(trimmed, i);
+        if is_ascii_digit(b) {
+            acc = acc * 10 + (b - 48);
+        } else {
+            return default_val;
+        }
+        i = i + 1;
+    }
+
+    if negative {
+        return 0 - acc;
+    }
+    return acc;
+}
+
+pub fn read_str_attribute(fs: &FsReadCap, path: String, default_val: String) -> String {
+    let r: Result[String, String] = read_file(fs, path);
+    if !r.is_ok() {
+        return default_val;
+    }
+    let s: String = match r { Ok(v) => v, Err(_) => default_val };
+    return str_trim(s);
+}
+
+pub fn read_int_attribute(fs: &FsReadCap, path: String, default_val: Int) -> Int {
+    let s: String = read_str_attribute(fs, path, "");
+    if chars_len(s) == 0 {
+        return default_val;
+    }
+    return parse_int_from_str(s, default_val);
+}
+
+pub fn read_battery_from_sysfs(
+    fs: &FsReadCap,
+    sysfs_base: String,
+    dev_name: String
+) -> BatteryInfo {
+    let base: String = if chars_len(sysfs_base) > 0 { sysfs_base } else { "/sys/class/power_supply" };
+    let mut chosen_dev: String = dev_name;
+    if chars_len(chosen_dev) == 0 || chosen_dev == "auto" {
+        let check_bat0: String = base + "/BAT0/status";
+        let r0: Result[String, String] = read_file(fs, check_bat0);
+        if r0.is_ok() {
+            chosen_dev = "BAT0";
+        } else {
+            let check_bat1: String = base + "/BAT1/status";
+            let r1: Result[String, String] = read_file(fs, check_bat1);
+            if r1.is_ok() {
+                chosen_dev = "BAT1";
+            } else {
+                return make_ac_power_info();
+            }
+        }
+    }
+
+    let dev_dir: String = base + "/" + chosen_dev;
+    let status_val: String = read_str_attribute(fs, dev_dir + "/status", "Unknown");
+    if status_val == "Unknown" {
+        return make_ac_power_info();
+    }
+
+    let cap: Int = read_int_attribute(fs, dev_dir + "/capacity", 100);
+    let mut e_now: Int = read_int_attribute(fs, dev_dir + "/energy_now", 0);
+    if e_now == 0 {
+        e_now = read_int_attribute(fs, dev_dir + "/charge_now", 0);
+    }
+    let mut e_full: Int = read_int_attribute(fs, dev_dir + "/energy_full", 0);
+    if e_full == 0 {
+        e_full = read_int_attribute(fs, dev_dir + "/charge_full", 0);
+    }
+    let mut p_now: Int = read_int_attribute(fs, dev_dir + "/power_now", 0);
+    if p_now == 0 {
+        p_now = read_int_attribute(fs, dev_dir + "/current_now", 0);
+    }
+    let v_now: Int = read_int_attribute(fs, dev_dir + "/voltage_now", 0);
+    let tech: String = read_str_attribute(fs, dev_dir + "/technology", "Li-ion");
+    let model: String = read_str_attribute(fs, dev_dir + "/model_name", chosen_dev);
+    let mfg: String = read_str_attribute(fs, dev_dir + "/manufacturer", "Generic");
+
+    let mut health: Int = 100;
+    let mut e_design: Int = read_int_attribute(fs, dev_dir + "/energy_full_design", 0);
+    if e_design == 0 {
+        e_design = read_int_attribute(fs, dev_dir + "/charge_full_design", 0);
+    }
+    if e_design > 0 && e_full > 0 {
+        health = (e_full * 100) / e_design;
+        if health > 100 { health = 100; }
+    }
+
+    return BatteryInfo {
+        name: chosen_dev,
+        is_present: true,
+        status: status_val,
+        capacity_pct: cap,
+        energy_now_uwh: e_now,
+        energy_full_uwh: e_full,
+        power_now_uw: p_now,
+        voltage_now_uv: v_now,
+        health_pct: health,
+        technology: tech,
+        model_name: model,
+        manufacturer: mfg
+    };
+}

@@ -1,0 +1,98 @@
+// # Model Context Protocol (MCP) Stdio Server for oobattery
+//
+// Logline: JSON-RPC 2.0 stdio server providing battery status, health, and consumption diagnostics.
+//
+// Setup: Demands FsReadCap for reading power supply sysfs attributes and stdio frames.
+//
+// Beats:
+//   1. Ingest JSON-RPC 2.0 frames over stdin and dispatch RPC methods.
+//   2. Advertise battery status, health metrics, and device listing tools.
+//   3. Read sysfs attributes safely and stream structured JSON responses.
+
+import "core/battery_model.oo";
+import "core/battery_sysfs.oo";
+import "core/battery_health.oo";
+import "render/battery_theme.oo";
+import "ipc/json_field.oo";
+
+pub fn run_mcp_server(fs: &FsReadCap) {
+    let mut running: Bool = true;
+    while running {
+        let line_res: Result[String, String] = oo_read_stdin_chunk(fs, 8192);
+        if !line_res.is_ok() {
+            running = false;
+        } else {
+            let line: String = match line_res { Ok(s) => s, Err(_) => "" };
+            let trimmed: String = str_trim(line);
+            if chars_len(trimmed) == 0 {
+                running = false;
+            } else {
+                let id: String = json_get_field(trimmed, "id");
+                let method: String = json_get_string(trimmed, "method");
+
+                if method == "initialize" {
+                    let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                        ",\"result\":{\"protocolVersion\":\"2024-11-05\"," +
+                        "\"serverInfo\":{\"name\":\"oobattery\",\"version\":\"0.2.0\"}," +
+                        "\"capabilities\":{\"tools\":{}}}}";
+                    println(resp);
+                } else if method == "notifications/initialized" {
+                    // Ack
+                } else if method == "tools/list" {
+                    let t1: String = "{\"name\":\"battery_status\",\"description\":\"Read battery charge level, status, power rate, and voltage\"," +
+                        "\"inputSchema\":{\"type\":\"object\",\"properties\":{\"device\":{\"type\":\"string\"},\"sysfs\":{\"type\":\"string\"}}}}";
+                    let t2: String = "{\"name\":\"battery_health\",\"description\":\"Inspect battery health percentage, factory wear, and degradation\"," +
+                        "\"inputSchema\":{\"type\":\"object\",\"properties\":{\"device\":{\"type\":\"string\"}}}}";
+                    let t3: String = "{\"name\":\"battery_list\",\"description\":\"List detected power supply and battery devices\"," +
+                        "\"inputSchema\":{\"type\":\"object\",\"properties\":{}}}";
+                    let t4: String = "{\"name\":\"battery_stats\",\"description\":\"Query oobattery specifications\"," +
+                        "\"inputSchema\":{\"type\":\"object\",\"properties\":{}}}";
+                    let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                        ",\"result\":{\"tools\":[" + t1 + "," + t2 + "," + t3 + "," + t4 + "]}}";
+                    println(resp);
+                } else if method == "tools/call" {
+                    let params: String = json_get_field(trimmed, "params");
+                    let tool_name: String = json_get_string(params, "name");
+                    let args: String = json_get_field(params, "arguments");
+
+                    if tool_name == "battery_status" {
+                        let dev: String = json_get_string(args, "device");
+                        let sysfs_path: String = json_get_string(args, "sysfs");
+                        let info: BatteryInfo = read_battery_from_sysfs(fs, sysfs_path, dev);
+                        let health: BatteryHealthReport = evaluate_battery_health(info);
+                        let j: String = render_battery_json(info, health);
+                        let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                            ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + json_escape_string(j) + "\"}]}}";
+                        println(resp);
+                    } else if tool_name == "battery_health" {
+                        let dev: String = json_get_string(args, "device");
+                        let info: BatteryInfo = read_battery_from_sysfs(fs, "", dev);
+                        let health: BatteryHealthReport = evaluate_battery_health(info);
+                        let h_json: String = "{\"device\":\"" + info.name + "\",\"health_pct\":" + to_string(health.health_pct) + ",\"wear_pct\":" + to_string(health.wear_pct) + "}";
+                        let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                            ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + json_escape_string(h_json) + "\"}]}}";
+                        println(resp);
+                    } else if tool_name == "battery_list" {
+                        let dev_list: String = "{\"devices\":[\"BAT0\",\"AC\"]}";
+                        let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                            ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + json_escape_string(dev_list) + "\"}]}}";
+                        println(resp);
+                    } else if tool_name == "battery_stats" {
+                        let stat: String = "{\"name\":\"oobattery\",\"version\":\"0.2.0\",\"standard\":\"Linux ACPI / sysfs power_supply\",\"status\":\"active\"}";
+                        let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                            ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + json_escape_string(stat) + "\"}]}}";
+                        println(resp);
+                    } else {
+                        let err_resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                            ",\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}";
+                        println(err_resp);
+                    }
+                } else {
+                    let err_resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                        ",\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}";
+                    println(err_resp);
+                }
+            }
+        }
+    }
+}

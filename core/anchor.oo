@@ -1,0 +1,22 @@
+// # oobattery Core Subsystem Anchor
+//
+// Logline: Consolidates battery models, Linux sysfs readers, and health metrics.
+//
+// Setup: Root barrel shim for power supply inspection domain.
+//
+// Beats:
+//   1. Re-export battery data models and state classifications.
+//   2. Re-export sysfs hardware attribute reader.
+//   3. Re-export battery health and runtime estimation calculator.
+
+import "core/battery_model.oo";
+import "core/battery_sysfs.oo";
+import "core/battery_health.oo";
+
+pub fn core_subsystem_version() -> String {
+    return "0.2.0";
+}
+
+pub fn core_subsystem_description() -> String {
+    return "oobattery pure openOODA power meter and battery monitor subsystem";
+}
